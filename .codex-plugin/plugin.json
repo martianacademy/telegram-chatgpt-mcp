@@ -1,6 +1,6 @@
 {
   "name": "telegram-mcp",
-  "version": "1.4.1",
+  "version": "1.5.0",
   "description": "Secure Telegram Bot API integration for ChatGPT with OAuth, allowlisted chats, messaging, media uploads, channel management, and broad Bot API coverage.",
   "author": {
     "name": "MartianAcademy"
