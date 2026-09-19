@@ -12,8 +12,8 @@ if (!allowedChatIds) throw new Error("ALLOWED_CHAT_IDS is required");
 if (!baseUrl) throw new Error("PUBLIC_BASE_URL or RAILWAY_PUBLIC_DOMAIN is required");
 
 const app = createApp({ token, authToken, allowedChatIds, baseUrl });
-const port = Number(process.env.PORT || 3000);
+const port = 3000;
 
 app.listen(port, "0.0.0.0", () => {
-  console.log(`Telegram MCP listening on ${baseUrl}/mcp`);
+  console.log(`Telegram MCP listening on 0.0.0.0:${port} — public ${baseUrl}/mcp`);
 });
