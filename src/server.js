@@ -1,6 +1,6 @@
 import { createApp } from "./app.js";
 
-const token = process.env.TELEGRAM_BOT_TOKEN;
+const token = process.env.TELEGRAM_BOT_TOKEN || process.env.ELEGRAM_BOT_TOKEN;
 const authToken = process.env.MCP_AUTH_TOKEN;
 const allowedChatIds = process.env.ALLOWED_CHAT_IDS;
 
