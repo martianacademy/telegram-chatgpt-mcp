@@ -42,9 +42,20 @@ function filenameFromUrl(value, fallback) {
   }
 }
 
-export function createTelegramClient({ token, fetchImpl = fetch }) {
+export function createTelegramClient({ token, fetchImpl = fetch, onResult }) {
   if (!token) throw new Error("TELEGRAM_BOT_TOKEN is required");
   const apiBase = `https://api.telegram.org/bot${token}`;
+
+  async function handleResult(method, payload, result) {
+    if (onResult) {
+      try {
+        await onResult({ method, payload, result });
+      } catch (error) {
+        console.error("Telegram history logging failed:", error);
+      }
+    }
+    return result;
+  }
 
   async function parseTelegramResponse(response, method) {
     let data;
@@ -65,7 +76,8 @@ export function createTelegramClient({ token, fetchImpl = fetch }) {
       headers: { "content-type": "application/json" },
       body: JSON.stringify(payload)
     });
-    return parseTelegramResponse(response, method);
+    const result = await parseTelegramResponse(response, method);
+    return handleResult(method, payload, result);
   }
 
   async function multipart(method, payload = {}, fileField, fileSpec = {}) {
@@ -98,7 +110,8 @@ export function createTelegramClient({ token, fetchImpl = fetch }) {
       method: "POST",
       body: form
     });
-    return parseTelegramResponse(response, method);
+    const result = await parseTelegramResponse(response, method);
+    return handleResult(method, payload, result);
   }
 
   return { json, multipart };
@@ -143,8 +156,8 @@ function registerRawMethod(server, name, method, description, telegram, assertAl
   });
 }
 
-export function createMcpServer(telegram, chatPolicy) {
-  const server = new McpServer({ name: "telegram", version: "1.4.1" });
+export function createMcpServer(telegram, chatPolicy, historyStore = null) {
+  const server = new McpServer({ name: "telegram", version: "1.5.0" });
   const { assertAllowed, isAllowed } = chatPolicy;
 
   registerStructuredTool(server, "telegram_get_me", {
@@ -381,11 +394,75 @@ export function createMcpServer(telegram, chatPolicy) {
   registerRawMethod(server, "telegram_delete_webhook", "deleteWebhook", "Delete the current Telegram webhook.", telegram, assertAllowed, { readOnlyHint: false, destructiveHint: true });
   registerRawMethod(server, "telegram_get_webhook_info", "getWebhookInfo", "Get webhook status.", telegram, assertAllowed, { readOnlyHint: true });
 
+
+  registerStructuredTool(server, "telegram_get_post_history", {
+    title: "Get Telegram post history",
+    description: "Return recent posts previously published through this MCP and stored in persistent history. Use this instead of getUpdates when reviewing the last 5-10 posts for duplicate quotes, themes, captions, or media.",
+    inputSchema: z.object({
+      chat_id: z.union([z.string(), z.number()]),
+      limit: z.number().int().min(1).max(50).optional().default(10)
+    }),
+    annotations: { readOnlyHint: true }
+  }, async ({ chat_id, limit }) => {
+    assertAllowed(chat_id);
+    if (!historyStore) throw new Error("Post history storage is not configured");
+    return out(await historyStore.getRecent(chat_id, limit));
+  });
+
+  registerStructuredTool(server, "telegram_save_post_history", {
+    title: "Save Telegram post history",
+    description: "Manually save or backfill a Telegram post into persistent history. Normal posts sent through this MCP are saved automatically.",
+    inputSchema: z.object({
+      chat_id: z.union([z.string(), z.number()]),
+      message_id: z.number().int().positive().optional(),
+      post_type: z.string().optional(),
+      text: z.string().optional(),
+      caption: z.string().optional(),
+      media_kind: z.string().optional(),
+      telegram_file_id: z.string().optional(),
+      metadata: z.record(z.string(), z.any()).optional()
+    }),
+    annotations: { readOnlyHint: false, destructiveHint: false }
+  }, async ({ chat_id, message_id, post_type, text, caption, media_kind, telegram_file_id, metadata }) => {
+    assertAllowed(chat_id);
+    if (!historyStore) throw new Error("Post history storage is not configured");
+    return out(await historyStore.saveManual({
+      chat_id,
+      message_id,
+      post_type,
+      text,
+      caption,
+      media_kind,
+      telegram_file_id,
+      metadata
+    }));
+  });
+
+  registerStructuredTool(server, "telegram_delete_post_history", {
+    title: "Delete Telegram post history record",
+    description: "Delete one stored post-history record by its history ID. This does not delete the Telegram message itself.",
+    inputSchema: z.object({
+      chat_id: z.union([z.string(), z.number()]),
+      history_id: z.number().int().positive()
+    }),
+    annotations: { readOnlyHint: false, destructiveHint: true }
+  }, async ({ chat_id, history_id }) => {
+    assertAllowed(chat_id);
+    if (!historyStore) throw new Error("Post history storage is not configured");
+    return out(await historyStore.deleteRecord(chat_id, history_id));
+  });
+
   return server;
 }
 
-export function createApp({ token, authToken, allowedChatIds, baseUrl, fetchImpl = fetch } = {}) {
-  const telegram = createTelegramClient({ token, fetchImpl });
+export function createApp({ token, authToken, allowedChatIds, baseUrl, historyStore = null, fetchImpl = fetch } = {}) {
+  const telegram = createTelegramClient({
+    token,
+    fetchImpl,
+    onResult: historyStore
+      ? (context) => historyStore.recordTelegramResult(context)
+      : null
+  });
   const chatPolicy = createChatPolicy(allowedChatIds);
   const oauth = createOAuthProvider({ baseUrl, secret: authToken });
   const mcpAuth = createOAuthMcpAuthMiddleware(oauth);
@@ -396,18 +473,18 @@ export function createApp({ token, authToken, allowedChatIds, baseUrl, fetchImpl
 
   app.get("/", (_req, res) => res.json({
     name: "Telegram ChatGPT MCP",
-    version: "1.4.1",
+    version: "1.5.0",
     status: "ok",
     endpoint: "/mcp",
     authentication: "OAuth 2.1 + PKCE",
-    capabilities: ["json Bot API passthrough", "multipart uploads", "base64 uploads", "allowlisted chats"]
+    capabilities: ["json Bot API passthrough", "multipart uploads", "base64 uploads", "allowlisted chats", "persistent post history"]
   }));
-  app.get("/health", (_req, res) => res.json({ ok: true, oauth: true, version: "1.4.1" }));
+  app.get("/health", (_req, res) => res.json({ ok: true, oauth: true, history: Boolean(historyStore), version: "1.5.0" }));
 
   installOAuthRoutes(app, oauth);
 
   app.all("/mcp", mcpAuth, async (req, res) => {
-    const server = createMcpServer(telegram, chatPolicy);
+    const server = createMcpServer(telegram, chatPolicy, historyStore);
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: undefined,
       enableJsonResponse: true
