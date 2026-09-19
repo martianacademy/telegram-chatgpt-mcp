@@ -1,14 +1,13 @@
 {
   "name": "telegram-chatgpt-mcp",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "private": true,
   "type": "module",
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
     "test": "node --test test/*.test.js",
-    "test:live": "node test-live.js",
-    "test:security": "node --test test/security.test.js"
+    "test:oauth": "node --test test/oauth.test.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.17.5",
