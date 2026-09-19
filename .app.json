@@ -1,0 +1,8 @@
+{
+  "apps": {
+    "telegram-mcp": {
+      "id": "asdk_app_6aae9895e5648191b3b46288a0e914b3",
+      "required": true
+    }
+  }
+}

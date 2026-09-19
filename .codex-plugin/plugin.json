@@ -1,0 +1,17 @@
+{
+  "name": "telegram-mcp",
+  "version": "1.4.0",
+  "description": "Secure Telegram Bot API integration for ChatGPT with OAuth, allowlisted chats, messaging, media uploads, channel management, and broad Bot API coverage.",
+  "author": {
+    "name": "MartianAcademy"
+  },
+  "apps": "./.app.json",
+  "interface": {
+    "displayName": "Telegram MCP",
+    "shortDescription": "Send, manage, and automate Telegram content.",
+    "longDescription": "Connect ChatGPT to Telegram through a secure OAuth-enabled MCP server. Supports text, photos, documents, media uploads, message editing, moderation and channel/group operations with an allowlist.",
+    "developerName": "MartianAcademy",
+    "category": "Productivity",
+    "capabilities": ["Read", "Write"]
+  }
+}
