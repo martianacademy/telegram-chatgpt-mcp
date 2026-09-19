@@ -104,9 +104,21 @@ export function createTelegramClient({ token, fetchImpl = fetch }) {
   return { json, multipart };
 }
 
-const out = (value) => ({
-  content: [{ type: "text", text: JSON.stringify(value, null, 2) }]
+const telegramResultSchema = z.object({
+  result: z.any()
 });
+
+const out = (value) => ({
+  content: [{ type: "text", text: JSON.stringify(value, null, 2) }],
+  structuredContent: { result: value }
+});
+
+function registerStructuredTool(server, name, config, handler) {
+  return registerStructuredTool(server, name, {
+    ...config,
+    outputSchema: config.outputSchema || telegramResultSchema
+  }, handler);
+}
 
 const rawParamsSchema = z.record(z.string(), z.any()).optional().default({});
 
@@ -120,7 +132,7 @@ function assertPayloadChatsAllowed(payload, assertAllowed) {
 }
 
 function registerRawMethod(server, name, method, description, telegram, assertAllowed, annotations = {}) {
-  server.registerTool(name, {
+  registerStructuredTool(server, name, {
     title: method,
     description,
     inputSchema: z.object({ params: rawParamsSchema }),
@@ -132,17 +144,17 @@ function registerRawMethod(server, name, method, description, telegram, assertAl
 }
 
 export function createMcpServer(telegram, chatPolicy) {
-  const server = new McpServer({ name: "telegram", version: "1.4.0" });
+  const server = new McpServer({ name: "telegram", version: "1.4.1" });
   const { assertAllowed, isAllowed } = chatPolicy;
 
-  server.registerTool("telegram_get_me", {
+  registerStructuredTool(server, "telegram_get_me", {
     title: "Get Telegram bot info",
     description: "Returns information about the connected Telegram bot.",
     inputSchema: z.object({}),
     annotations: { readOnlyHint: true }
   }, async () => out(await telegram.json("getMe")));
 
-  server.registerTool("telegram_get_chat", {
+  registerStructuredTool(server, "telegram_get_chat", {
     title: "Get Telegram chat",
     description: "Get information about an allowed Telegram chat, group, supergroup, or channel.",
     inputSchema: z.object({ chat_id: z.union([z.string(), z.number()]) }),
@@ -152,7 +164,7 @@ export function createMcpServer(telegram, chatPolicy) {
     return out(await telegram.json("getChat", { chat_id }));
   });
 
-  server.registerTool("telegram_send_message", {
+  registerStructuredTool(server, "telegram_send_message", {
     title: "Send Telegram message",
     description: "Send a text message to an allowed Telegram user, group, supergroup, or channel.",
     inputSchema: z.object({
@@ -174,7 +186,7 @@ export function createMcpServer(telegram, chatPolicy) {
     }));
   });
 
-  server.registerTool("telegram_send_photo", {
+  registerStructuredTool(server, "telegram_send_photo", {
     title: "Send Telegram photo",
     description: "Send a photo to an allowed chat. Supports Telegram file_id/public URL, a downloadable file_url, or base64/data-URI upload. For ChatGPT-generated local images, use photo_base64 when the file bytes are available.",
     inputSchema: z.object({
@@ -210,7 +222,7 @@ export function createMcpServer(telegram, chatPolicy) {
     return out(await telegram.json("sendPhoto", { ...payload, photo }));
   });
 
-  server.registerTool("telegram_send_document", {
+  registerStructuredTool(server, "telegram_send_document", {
     title: "Send Telegram document",
     description: "Send a document using Telegram file_id/public URL or upload it from base64 or a downloadable URL.",
     inputSchema: z.object({
@@ -240,7 +252,7 @@ export function createMcpServer(telegram, chatPolicy) {
     return out(await telegram.json("sendDocument", { ...payload, document }));
   });
 
-  server.registerTool("telegram_upload_file", {
+  registerStructuredTool(server, "telegram_upload_file", {
     title: "Upload file to any Telegram Bot API method",
     description: "Generic multipart Telegram upload. Use for photos, videos, audio, voice, stickers, documents, thumbnails, chat photos, and other Bot API methods that accept file uploads.",
     inputSchema: z.object({
@@ -265,7 +277,7 @@ export function createMcpServer(telegram, chatPolicy) {
     }));
   });
 
-  server.registerTool("telegram_api_call", {
+  registerStructuredTool(server, "telegram_api_call", {
     title: "Call any Telegram Bot API method",
     description: "Generic JSON passthrough for any current or future Telegram Bot API method. This gives full Bot API coverage beyond the named tools. Any chat_id/from_chat_id fields must be in ALLOWED_CHAT_IDS.",
     inputSchema: z.object({
@@ -278,7 +290,7 @@ export function createMcpServer(telegram, chatPolicy) {
     return out(await telegram.json(method, params));
   });
 
-  server.registerTool("telegram_get_updates", {
+  registerStructuredTool(server, "telegram_get_updates", {
     title: "Read allowed Telegram bot updates",
     description: "Read recent bot updates, filtered so only updates belonging to ALLOWED_CHAT_IDS are returned. Do not use while a webhook is configured.",
     inputSchema: z.object({
@@ -384,13 +396,13 @@ export function createApp({ token, authToken, allowedChatIds, baseUrl, fetchImpl
 
   app.get("/", (_req, res) => res.json({
     name: "Telegram ChatGPT MCP",
-    version: "1.4.0",
+    version: "1.4.1",
     status: "ok",
     endpoint: "/mcp",
     authentication: "OAuth 2.1 + PKCE",
     capabilities: ["json Bot API passthrough", "multipart uploads", "base64 uploads", "allowlisted chats"]
   }));
-  app.get("/health", (_req, res) => res.json({ ok: true, oauth: true, version: "1.4.0" }));
+  app.get("/health", (_req, res) => res.json({ ok: true, oauth: true, version: "1.4.1" }));
 
   installOAuthRoutes(app, oauth);
 
