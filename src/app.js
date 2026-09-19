@@ -114,7 +114,7 @@ const out = (value) => ({
 });
 
 function registerStructuredTool(server, name, config, handler) {
-  return registerStructuredTool(server, name, {
+  return server.registerTool(name, {
     ...config,
     outputSchema: config.outputSchema || telegramResultSchema
   }, handler);
